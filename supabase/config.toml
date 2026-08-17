@@ -1,0 +1,7 @@
+project_id = "ywylhzcxuoeilygzdonx"
+
+[db]
+major_version = 17
+
+[db.migrations]
+schema_paths = []

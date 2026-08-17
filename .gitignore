@@ -1,0 +1,26 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Builds
+dist/
+build/
+.next/
+.expo/
+out/
+
+# Supabase
+.branches/
+.temp/
+
+# OS / editor
+.DS_Store
+*.log
+
+# TypeScript
+*.tsbuildinfo
