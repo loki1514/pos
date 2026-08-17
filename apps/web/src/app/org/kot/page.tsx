@@ -1,18 +1,21 @@
 import type { Metadata } from "next";
-import { ChefHat } from "lucide-react";
-import { Planned } from "@/components/admin/Planned";
+import { redirect } from "next/navigation";
+import { getMyOrg } from "@/lib/org";
+import { KotBoard } from "@/components/org/kot/KotBoard";
+import { getKotBoard } from "./actions";
 
 export const metadata: Metadata = { title: "Kitchen (KOT)" };
 
-export default function Page() {
+export default async function KotPage() {
+  const org = await getMyOrg();
+  if (!org) redirect("/login?next=/org/kot");
+  if (org.myRole !== "kitchen" && org.myRole !== "org_admin") redirect("/org");
+
+  const initial = await getKotBoard();
+
   return (
-    <Planned
-      icon={ChefHat}
-      title="Kitchen (KOT)"
-      phase="Phase 3 · Operations"
-      position="3 of 8"
-      blurb="Kitchen order tickets — what to cook, in what order, for which table."
-      scope={["KOT print and re-print","Course-wise firing","Prep-time tracking"]}
-    />
+    <main className="pb-8">
+      <KotBoard orgId={org.id} initial={initial} />
+    </main>
   );
 }
