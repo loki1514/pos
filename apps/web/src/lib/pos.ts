@@ -289,6 +289,193 @@ export async function setKotStatus(kotId: string, status: KotStatus): Promise<vo
   if (error) throw new Error(`setKotStatus: ${error.message}`);
 }
 
+const ORDER_COLUMNS =
+  "id, order_no, display_no, channel, status, table_id, customer_name, customer_phone, captain_name, subtotal, gst_pct, gst_amount, total, payment_method, created_at";
+
+const ITEM_COLUMNS = "id, order_id, menu_item_id, name, qty, unit_price, add_ons, notes";
+
+/** Line items for a set of orders (RLS scopes through the parent order). */
+export async function listOrderItems(orderIds: string[]): Promise<OrderItem[]> {
+  if (orderIds.length === 0) return [];
+  const supabase = await supabaseServer();
+  const { data, error } = await supabase
+    .from("order_items")
+    .select(ITEM_COLUMNS)
+    .in("order_id", orderIds)
+    .order("created_at");
+
+  if (error) throw new Error(`listOrderItems: ${error.message}`);
+  return (data ?? []) as OrderItem[];
+}
+
+export async function getOrderWithItems(
+  orderId: string,
+): Promise<{ order: Order; items: OrderItem[] }> {
+  const supabase = await supabaseServer();
+  const { data: order, error } = await supabase
+    .from("orders")
+    .select(ORDER_COLUMNS)
+    .eq("id", orderId)
+    .single();
+  if (error) throw new Error(`getOrderWithItems: ${error.message}`);
+
+  const items = await listOrderItems([orderId]);
+  return { order: order as Order, items };
+}
+
+/**
+ * Recomputes subtotal/GST/total from the current line items. The POS mutates
+ * lines one tap at a time, so totals are derived here after every change —
+ * the database has no trigger doing this.
+ */
+export async function recalcOrderTotals(orderId: string): Promise<Order> {
+  const { data: items, error: itemsErr } = await supabaseAdmin
+    .from("order_items")
+    .select("qty, unit_price")
+    .eq("order_id", orderId);
+  if (itemsErr) throw new Error(`recalcOrderTotals (items): ${itemsErr.message}`);
+
+  const { data: order, error: orderErr } = await supabaseAdmin
+    .from("orders")
+    .select("gst_pct")
+    .eq("id", orderId)
+    .single();
+  if (orderErr) throw new Error(`recalcOrderTotals (order): ${orderErr.message}`);
+
+  const subtotal = (items ?? []).reduce(
+    (s, l) => s + Number(l.qty) * Number(l.unit_price),
+    0,
+  );
+  const gstAmount = Math.round(subtotal * Number(order.gst_pct)) / 100;
+
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .update({
+      subtotal,
+      gst_amount: gstAmount,
+      total: Math.round((subtotal + gstAmount) * 100) / 100,
+    })
+    .eq("id", orderId)
+    .select(ORDER_COLUMNS)
+    .single();
+  if (error) throw new Error(`recalcOrderTotals: ${error.message}`);
+  return data as Order;
+}
+
+export type OrderDetailsPatch = {
+  channel?: OrderChannel;
+  table_id?: string | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+};
+
+/** Edits the non-line fields of an open order from the bill panel. */
+export async function updateOrderDetails(
+  orderId: string,
+  patch: OrderDetailsPatch,
+): Promise<Order> {
+  const supabase = await supabaseServer();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .update(patch)
+    .eq("id", orderId)
+    .select(ORDER_COLUMNS)
+    .single();
+  if (error) throw new Error(`updateOrderDetails: ${error.message}`);
+  return data as Order;
+}
+
+/** Sets the quantity of a line (min 1 — removal is removeOrderItem) and recalcs. */
+export async function setOrderItemQty(
+  orderId: string,
+  itemId: string,
+  qty: number,
+): Promise<Order> {
+  const supabase = await supabaseServer();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+
+  const { error } = await supabaseAdmin
+    .from("order_items")
+    .update({ qty })
+    .eq("id", itemId)
+    .eq("order_id", orderId);
+  if (error) throw new Error(`setOrderItemQty: ${error.message}`);
+
+  return recalcOrderTotals(orderId);
+}
+
+/** Removes a line and recalcs order totals. */
+export async function removeOrderItem(orderId: string, itemId: string): Promise<Order> {
+  const supabase = await supabaseServer();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+
+  const { error } = await supabaseAdmin
+    .from("order_items")
+    .delete()
+    .eq("id", itemId)
+    .eq("order_id", orderId);
+  if (error) throw new Error(`removeOrderItem: ${error.message}`);
+
+  return recalcOrderTotals(orderId);
+}
+
+/**
+ * Fires the order to the kitchen: a fresh KOT number from the per-org
+ * counter (station 'main' — multi-station fan-out lands later) and the
+ * order moves to sent_to_kitchen.
+ */
+export async function sendOrderToKitchen(orderId: string): Promise<KotTicket> {
+  const supabase = await supabaseServer();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not signed in.");
+
+  const { data: order, error: orderErr } = await supabaseAdmin
+    .from("orders")
+    .select("organization_id")
+    .eq("id", orderId)
+    .single();
+  if (orderErr) throw new Error(`sendOrderToKitchen (order): ${orderErr.message}`);
+
+  const { data: kotNo, error: seqErr } = await supabaseAdmin.rpc("next_org_seq", {
+    org: order.organization_id,
+    counter_kind: "kot",
+  });
+  if (seqErr) throw new Error(`sendOrderToKitchen (sequence): ${seqErr.message}`);
+
+  const { data: kot, error } = await supabaseAdmin
+    .from("kot_tickets")
+    .insert({
+      organization_id: order.organization_id,
+      order_id: orderId,
+      kot_no: kotNo,
+      station: "main",
+    })
+    .select("id, order_id, kot_no, station, status, priority, created_at, updated_at")
+    .single();
+  if (error) throw new Error(`sendOrderToKitchen: ${error.message}`);
+
+  const { error: statusErr } = await supabaseAdmin
+    .from("orders")
+    .update({ status: "sent_to_kitchen" })
+    .eq("id", orderId);
+  if (statusErr) throw new Error(`sendOrderToKitchen (status): ${statusErr.message}`);
+
+  return kot as KotTicket;
+}
+
 /**
  * Marks an order paid and records the payment method. `method` may be null
  * when the caller only wants to flip the status (e.g. delivered).
