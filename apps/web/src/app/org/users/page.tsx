@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Users } from "lucide-react";
-import { getMyOrg, listOrgMembers } from "@/lib/org";
+import { getMyOrg, listOrgMembers, listRoles } from "@/lib/org";
+import { listInvites } from "@/lib/invites";
+import { InviteCard } from "@/components/shared/InviteCard";
+import { createOrgInviteAction } from "./actions";
 
 export const metadata: Metadata = { title: "Users & Roles" };
 export const dynamic = "force-dynamic";
@@ -11,15 +14,21 @@ const ROLE_TONE: Record<string, { bg: string; fg: string }> = {
 
 export default async function OrgUsersPage() {
   const org = await getMyOrg();
-  const members = org ? await listOrgMembers(org.id) : [];
+  const [members, roles, invites] = org
+    ? await Promise.all([
+        listOrgMembers(org.id),
+        listRoles(),
+        listInvites(org.id),
+      ])
+    : [[], [], []];
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="t-h1">Users &amp; Roles</h1>
         <p className="mt-2 text-[15px] text-muted">
-          Everyone who can sign in to {org?.name ?? "this organization"}.
-          Inviting new members lands next — for now this is the live roster.
+          Everyone who can sign in to {org?.name ?? "this organization"}, and
+          invite links for the ones who haven&apos;t joined yet.
         </p>
       </div>
 
@@ -75,6 +84,15 @@ export default async function OrgUsersPage() {
           </ul>
         </div>
       </div>
+
+      {org && (
+        <InviteCard
+          organizationId={org.id}
+          createAction={createOrgInviteAction}
+          roles={roles}
+          invites={invites}
+        />
+      )}
     </div>
   );
 }

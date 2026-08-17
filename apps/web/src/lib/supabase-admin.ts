@@ -28,4 +28,21 @@ function client() {
   });
 }
 
-export const supabaseAdmin = client();
+let cached: ReturnType<typeof client> | null = null;
+
+/**
+ * Lazy on purpose: constructing this at module scope means a missing env var
+ * crashes the whole serverless function at import time — before any route
+ * handler's try/catch runs — and Next serves its generic HTML 500 instead of
+ * the JSON error callers expect. Deferring construction to first use turns
+ * that into an ordinary catchable error.
+ */
+export const supabaseAdmin: ReturnType<typeof client> = new Proxy(
+  {} as ReturnType<typeof client>,
+  {
+    get(_target, prop, receiver) {
+      cached ??= client();
+      return Reflect.get(cached, prop, receiver);
+    },
+  },
+);

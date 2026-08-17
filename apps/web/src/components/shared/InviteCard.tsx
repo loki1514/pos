@@ -10,15 +10,17 @@ import {
   TriangleAlert,
   UserPlus,
 } from "lucide-react";
-import {
-  createInviteAction,
-  type InviteState,
-} from "@/app/admin/organizations/actions";
 import type { InviteSummary } from "@/lib/invites";
 import { haptic } from "@/lib/haptics";
 import { cn } from "@/lib/cn";
 
-const INITIAL: InviteState = { ok: false, error: null, url: null };
+export type InviteActionState = {
+  ok: boolean;
+  error: string | null;
+  url: string | null;
+};
+
+const INITIAL: InviteActionState = { ok: false, error: null, url: null };
 
 function GenerateButton() {
   const { pending } = useFormStatus();
@@ -56,17 +58,37 @@ function InviteStatus({ invite }: { invite: InviteSummary }) {
   );
 }
 
+/**
+ * Shared by both the super-admin org detail page and the org admin's own
+ * Users & Roles page. The two surfaces differ only in who is authorized to
+ * call the action — the action itself is passed in already bound to a
+ * (organizationId, roleId) pair, so this component never needs to know
+ * which caller it's rendering for.
+ */
+type CreateAction = (
+  organizationId: string,
+  roleId: string,
+  prevState: InviteActionState,
+) => Promise<InviteActionState>;
+
 export function InviteCard({
+  title = "Invite links",
   organizationId,
+  createAction,
   roles,
   invites,
 }: {
+  title?: string;
   organizationId: string;
+  /** The org-scoped and super-admin actions share this exact shape — only the authorization inside differs. */
+  createAction: CreateAction;
   roles: { id: string; name: string; slug: string }[];
   invites: InviteSummary[];
 }) {
   const [roleId, setRoleId] = useState(roles[0]?.id ?? "");
-  const action = createInviteAction.bind(null, organizationId, roleId);
+  // Re-bound on every render so the action always closes over the currently
+  // selected role — matches how this worked before the component was shared.
+  const action = createAction.bind(null, organizationId, roleId);
   const [state, formAction] = useActionState(action, INITIAL);
   const [copied, setCopied] = useState(false);
 
@@ -80,7 +102,7 @@ export function InviteCard({
           >
             <Link2 size={15} className="text-[var(--lime)]" />
           </span>
-          <h2 className="t-h3">Invite links</h2>
+          <h2 className="t-h3">{title}</h2>
         </div>
 
         <p className="mt-3 t-small text-muted">

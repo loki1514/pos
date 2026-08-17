@@ -1,21 +1,14 @@
 import { NextResponse } from "next/server";
-import {
-  SESSION_COOKIE,
-  SESSION_MAX_AGE,
-  createSession,
-  verifyCredentials,
-} from "@/lib/auth";
 import { supabaseServer } from "@/lib/supabase-server";
 
 /**
- * One login endpoint, two credential stores:
- *  1. Vini super admin — env-var credential, signed cookie (src/lib/auth.ts).
- *  2. Everyone else — real Supabase Auth (org admins today; captain/kitchen/
- *     biller land here too once those roles exist).
- *
- * The client never chooses which path to try — it tries the super admin
- * check first (cheap, no network), then falls back to Supabase Auth. The
- * response carries `role` so the login page knows which dashboard to land on.
+ * One credential store: Supabase Auth. The Vini super admin used to be a
+ * separate env-var/signed-cookie account (see git history) — that meant a
+ * second set of secrets (MASTER_ADMIN_EMAIL/PASSWORD, AUTH_SECRET) to keep in
+ * sync across every deployment, and a real outage when a hosting target
+ * missed one. Now super admins are ordinary Supabase Auth users with a row in
+ * `platform_admins` (migration 0001); org admins have a row in `org_users`
+ * (migration 0004). Same sign-in call, role decided after the fact.
  */
 export async function POST(request: Request) {
   let email = "";
@@ -36,38 +29,14 @@ export async function POST(request: Request) {
     );
   }
 
-  // 1. Super admin
-  if (verifyCredentials(email, password)) {
-    try {
-      const token = await createSession(email.trim().toLowerCase());
-      const response = NextResponse.json({ ok: true, role: "super_admin" });
-      response.cookies.set(SESSION_COOKIE, token, {
-        httpOnly: true,
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-        path: "/",
-        maxAge: SESSION_MAX_AGE,
-      });
-      return response;
-    } catch (err) {
-      // AUTH_SECRET missing/too short on this deployment.
-      console.error("login: session signing failed", err);
-      return NextResponse.json(
-        {
-          error:
-            "Sign-in service is misconfigured on this deployment (AUTH_SECRET). Check the server environment variables.",
-        },
-        { status: 500 },
-      );
-    }
-  }
-
-  // 2. Supabase Auth (org admins, and future org-scoped roles)
   try {
     const supabase = await supabaseServer();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-    if (error) {
+    if (authError) {
       // Blunt the brute-force edge without a rate-limit store.
       await new Promise((r) => setTimeout(r, 550));
       return NextResponse.json(
@@ -76,11 +45,18 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ ok: true, role: "org_admin" });
+    const { data: isPlatformAdmin, error: rpcError } =
+      await supabase.rpc("is_platform_admin");
+    if (rpcError) throw rpcError;
+
+    return NextResponse.json({
+      ok: true,
+      role: isPlatformAdmin ? "super_admin" : "org_admin",
+    });
   } catch (err) {
     // Configuration problems (missing env vars) land here. Say so plainly —
     // a bare 500 is indistinguishable from a bug in the login flow itself.
-    console.error("login: supabase path failed", err);
+    console.error("login: sign-in failed", err);
     return NextResponse.json(
       {
         error:

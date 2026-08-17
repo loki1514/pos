@@ -10,10 +10,11 @@ import {
   Phone,
 } from "lucide-react";
 import { AdminCredentialCard } from "@/components/admin/AdminCredentialCard";
-import { InviteCard } from "@/components/admin/InviteCard";
+import { InviteCard } from "@/components/shared/InviteCard";
 import { getOrgAdmin, getOrganization, type OrgStatus } from "@/lib/organizations";
 import { listInvites } from "@/lib/invites";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { createInviteAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -135,6 +136,7 @@ export default async function OrganizationDetailPage({
       {/* Invite links — onboard staff into any role */}
       <InviteCard
         organizationId={organization.id}
+        createAction={createInviteAction}
         roles={roles}
         invites={invites}
       />

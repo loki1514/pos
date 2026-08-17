@@ -1,8 +1,8 @@
 "use server";
 
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { SESSION_COOKIE, readSession } from "@/lib/auth";
+import { requirePlatformAdmin } from "@/lib/platform-admin";
 import {
   createOrganization,
   regenerateAdminPassword,
@@ -18,18 +18,12 @@ export type CreateOrgState = {
   created: { orgName: string; adminEmail: string; adminPassword: string } | null;
 };
 
-async function requireSuperAdmin() {
-  const store = await cookies();
-  const session = await readSession(store.get(SESSION_COOKIE)?.value);
-  if (!session) throw new Error("Not signed in.");
-}
-
 export async function createOrganizationAction(
   _prev: CreateOrgState,
   formData: FormData,
 ): Promise<CreateOrgState> {
   try {
-    await requireSuperAdmin();
+    await requirePlatformAdmin();
 
     const name = String(formData.get("name") ?? "").trim();
     const type = String(formData.get("type") ?? "") as OrgType;
@@ -90,7 +84,7 @@ export async function regeneratePasswordAction(
   _prev: RegenerateState,
 ): Promise<RegenerateState> {
   try {
-    await requireSuperAdmin();
+    await requirePlatformAdmin();
     const credentials = await regenerateAdminPassword(organizationId);
     return { ok: true, error: null, credentials };
   } catch (err) {
@@ -112,13 +106,11 @@ export async function createInviteAction(
   _prev: InviteState,
 ): Promise<InviteState> {
   try {
-    const store = await cookies();
-    const session = await readSession(store.get(SESSION_COOKIE)?.value);
-    if (!session) throw new Error("Not signed in.");
+    const admin = await requirePlatformAdmin();
 
     if (!roleId) return { ok: false, error: "Choose a role first.", url: null };
 
-    const { token } = await createInvite(organizationId, roleId, session.sub);
+    const { token } = await createInvite(organizationId, roleId, admin.email);
 
     const host = (await headers()).get("host") ?? "";
     const proto = process.env.NODE_ENV === "production" ? "https" : "http";
