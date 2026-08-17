@@ -38,30 +38,55 @@ export async function POST(request: Request) {
 
   // 1. Super admin
   if (verifyCredentials(email, password)) {
-    const token = await createSession(email.trim().toLowerCase());
-    const response = NextResponse.json({ ok: true, role: "super_admin" });
-    response.cookies.set(SESSION_COOKIE, token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: SESSION_MAX_AGE,
-    });
-    return response;
+    try {
+      const token = await createSession(email.trim().toLowerCase());
+      const response = NextResponse.json({ ok: true, role: "super_admin" });
+      response.cookies.set(SESSION_COOKIE, token, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: SESSION_MAX_AGE,
+      });
+      return response;
+    } catch (err) {
+      // AUTH_SECRET missing/too short on this deployment.
+      console.error("login: session signing failed", err);
+      return NextResponse.json(
+        {
+          error:
+            "Sign-in service is misconfigured on this deployment (AUTH_SECRET). Check the server environment variables.",
+        },
+        { status: 500 },
+      );
+    }
   }
 
   // 2. Supabase Auth (org admins, and future org-scoped roles)
-  const supabase = await supabaseServer();
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  try {
+    const supabase = await supabaseServer();
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
 
-  if (error) {
-    // Blunt the brute-force edge without a rate-limit store.
-    await new Promise((r) => setTimeout(r, 550));
+    if (error) {
+      // Blunt the brute-force edge without a rate-limit store.
+      await new Promise((r) => setTimeout(r, 550));
+      return NextResponse.json(
+        { error: "Those credentials don't match a Vini account." },
+        { status: 401 },
+      );
+    }
+
+    return NextResponse.json({ ok: true, role: "org_admin" });
+  } catch (err) {
+    // Configuration problems (missing env vars) land here. Say so plainly —
+    // a bare 500 is indistinguishable from a bug in the login flow itself.
+    console.error("login: supabase path failed", err);
     return NextResponse.json(
-      { error: "Those credentials don't match a Vini account." },
-      { status: 401 },
+      {
+        error:
+          "Sign-in service is misconfigured on this deployment. Check the server environment variables.",
+      },
+      { status: 500 },
     );
   }
-
-  return NextResponse.json({ ok: true, role: "org_admin" });
 }
