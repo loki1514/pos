@@ -14,12 +14,12 @@ import { createClient } from "@supabase/supabase-js";
  * so RLS actually enforces tenant isolation there.
  */
 function client() {
-  const url = process.env.SUPABASE_URL;
+  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!url || !key) {
     throw new Error(
-      "SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are not set. Check .env.local.",
+      "SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) / SUPABASE_SERVICE_ROLE_KEY are not set. Check the deployment environment.",
     );
   }
 
