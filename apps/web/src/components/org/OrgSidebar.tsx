@@ -22,6 +22,7 @@ import {
   Truck,
   Users,
   Utensils,
+  UtensilsCrossed,
   X,
 } from "lucide-react";
 import { useState } from "react";
@@ -56,6 +57,7 @@ const SECTIONS: { heading: string | null; items: Item[] }[] = [
       { href: "/org/captain", label: "Captain Order", icon: Smartphone },
       { href: "/org/kot", label: "Kitchen (KOT)", icon: ChefHat },
       { href: "/org/kds", label: "Kitchen Display", icon: Monitor },
+      { href: "/org/menu-items", label: "Menu Items", icon: UtensilsCrossed, ready: true },
       { href: "/org/pos", label: "POS Billing", icon: Receipt },
       { href: "/org/tables", label: "Dining Areas", icon: Utensils },
       { href: "/org/qr", label: "QR Ordering", icon: QrCode },
