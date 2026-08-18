@@ -1,34 +1,48 @@
 import type { Metadata } from "next";
 import { Blocks, Hammer, Lock, Users } from "lucide-react";
-import { listModulesWithOrgCounts, type Module } from "@/lib/tenant";
+import {
+  listModulesWithOrgCounts,
+  type ModuleWithOrgCount,
+} from "@/lib/tenant";
 import { cn } from "@/lib/cn";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Modules" };
 
-type ModuleWithCount = Module & { orgsEnabled: number };
+type ModuleWithCount = ModuleWithOrgCount;
 
 const GROUP_ORDER = [
-  "Dashboard",
-  "Orders",
-  "POS",
-  "KDS / KOT",
-  "Menu",
-  "Inventory",
-  "Finance",
-  "Marketing / CRM",
-  "Staff",
-  "Settings",
+  "Overview",
+  "Operations",
+  "Catalog",
+  "Back Office",
+  "Growth",
+  "Configuration",
 ];
 
-/** Submodules that exist in the product today; everything else is coming soon. */
+/** Group label used for catalog rows whose group is NULL. */
+const UNGROUPED = "Other";
+
+/**
+ * Submodules that exist in the product today; everything else is coming
+ * soon. Keyed as "<module key> > <submodule key or name>", lowercased.
+ */
 const BUILT_SUBMODULES = new Set([
+  "orders > live_orders",
   "orders > live orders",
   "pos > billing",
-  "kds / kot > kitchen screen",
+  "kds_kot > kitchen_screen",
+  "kds_kot > kitchen screen",
   "menu > items",
 ]);
+
+function isBuilt(moduleKey: string, sub: { key: string; name: string }): boolean {
+  if (sub.key && BUILT_SUBMODULES.has(`${moduleKey} > ${sub.key.toLowerCase()}`)) {
+    return true;
+  }
+  return BUILT_SUBMODULES.has(`${moduleKey} > ${sub.name.toLowerCase()}`);
+}
 
 function groupRank(group: string): number {
   const i = GROUP_ORDER.findIndex(
@@ -38,8 +52,8 @@ function groupRank(group: string): number {
 }
 
 export default async function ModulesPage() {
-  // The tenant data layer may still be a stub pre-merge — render an honest
-  // empty state instead of failing the page.
+  // Render an honest empty state instead of failing the page if the
+  // control-plane tables are missing.
   let modules: ModuleWithCount[] = [];
   let wired = true;
   try {
@@ -50,9 +64,10 @@ export default async function ModulesPage() {
 
   const groups = new Map<string, ModuleWithCount[]>();
   for (const m of modules) {
-    const list = groups.get(m.group) ?? [];
+    const group = m.group ?? UNGROUPED;
+    const list = groups.get(group) ?? [];
     list.push(m);
-    groups.set(m.group, list);
+    groups.set(group, list);
   }
   const ordered = [...groups.entries()].sort(
     (a, b) => groupRank(a[0]) - groupRank(b[0]),
@@ -148,15 +163,18 @@ export default async function ModulesPage() {
                           {mod.orgsEnabled === 1 ? "org" : "orgs"}
                         </span>
                       </div>
+                      {mod.description && (
+                        <p className="mt-2 t-small text-muted">
+                          {mod.description}
+                        </p>
+                      )}
                       {mod.submodules.length > 0 && (
                         <div className="mt-3 flex flex-wrap gap-1.5">
                           {mod.submodules.map((sub) => {
-                            const built = BUILT_SUBMODULES.has(
-                              `${mod.group.toLowerCase()} > ${sub.toLowerCase()}`,
-                            );
+                            const built = isBuilt(mod.key, sub);
                             return (
                               <span
-                                key={sub}
+                                key={sub.key || sub.name}
                                 className={cn(
                                   "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11.5px] font-semibold",
                                   built
@@ -174,7 +192,7 @@ export default async function ModulesPage() {
                                 }
                               >
                                 {!built && <Hammer size={9} />}
-                                {sub}
+                                {sub.name}
                                 {!built && (
                                   <span className="opacity-75">
                                     · Coming soon

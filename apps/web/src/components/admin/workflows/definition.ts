@@ -3,14 +3,32 @@
  * client editor and the server actions, so keep it dependency-free.
  */
 
-export type WorkflowNodeType = "trigger" | "step" | "condition" | "end";
+export type WorkflowNodeType =
+  | "trigger"
+  | "start"
+  | "step"
+  | "task"
+  | "action"
+  | "state"
+  | "condition"
+  | "end";
 
+// "start"/"task"/"action"/"state" appear in the seeded platform templates
+// (migration 0007); the rest are the editor's canonical vocabulary. Both are
+// valid — the tenant data layer accepts any non-empty type string.
 export const NODE_TYPES: WorkflowNodeType[] = [
   "trigger",
+  "start",
   "step",
+  "task",
+  "action",
+  "state",
   "condition",
   "end",
 ];
+
+/** Node types that mark the entry point of a workflow. */
+const ENTRY_TYPES = new Set(["trigger", "start"]);
 
 export type WorkflowNode = {
   id: string;
@@ -26,7 +44,8 @@ export type WorkflowDefinition = {
   edges: WorkflowEdge[];
 };
 
-export const WORKFLOW_MODULES = ["orders", "pos", "kot", "inventory"] as const;
+// Module keys a workflow can attach to (see the modules registry, 0007).
+export const WORKFLOW_MODULES = ["orders", "pos", "kds_kot", "inventory"] as const;
 export type WorkflowModule = (typeof WORKFLOW_MODULES)[number];
 
 export function emptyDefinition(): WorkflowDefinition {
@@ -41,8 +60,9 @@ export function emptyDefinition(): WorkflowDefinition {
  * definition is valid. Rules (also enforced client-side in the editor):
  *  - must parse to an object with nodes[] / edges[]
  *  - node ids are non-empty, unique strings
- *  - node type is one of trigger | step | condition | end
- *  - exactly one trigger node
+ *  - node type is one of NODE_TYPES (the tenant data layer only requires a
+ *    non-empty string; this UI-level check keeps the graph renderable)
+ *  - exactly one entry node (trigger or start)
  *  - every edge endpoint references an existing node
  */
 export function validateDefinition(def: unknown): string | null {
@@ -71,12 +91,12 @@ export function validateDefinition(def: unknown): string | null {
     if (ids.has(n.id)) return `Duplicate node id "${n.id}".`;
     ids.add(n.id);
     if (!NODE_TYPES.includes(n.type as WorkflowNodeType)) {
-      return `Node "${n.id}" has an invalid type — use trigger, step, condition or end.`;
+      return `Node "${n.id}" has an unknown type — use one of: ${NODE_TYPES.join(", ")}.`;
     }
-    if (n.type === "trigger") triggers += 1;
+    if (ENTRY_TYPES.has(n.type as string)) triggers += 1;
   }
   if (triggers !== 1) {
-    return `Definition must have exactly one trigger node (found ${triggers}).`;
+    return `Definition must have exactly one entry node of type trigger or start (found ${triggers}).`;
   }
 
   for (const [i, edge] of edges.entries()) {
@@ -119,13 +139,93 @@ export function slugIsValid(key: string): boolean {
   return /^[a-z][a-z0-9_]{1,63}$/.test(key);
 }
 
+// ---------------------------------------------------------------------------
+// Tenant-shape adapters
+//
+// The editor uses a flat shape — nodes {id, type, label?}, edges {from, to,
+// if?}. The tenant data layer (lib/tenant.ts) stores nodes as {id, type,
+// data} with the display label inside data.label, and edge condition labels
+// as `label`. Convert at the boundary so neither side loses information.
+// ---------------------------------------------------------------------------
+
+/** Editor shape → the shape validateWorkflowDefinition / saveWorkflow expect. */
+export function toTenantDefinition(def: WorkflowDefinition): {
+  nodes: { id: string; type: string; data: Record<string, unknown> }[];
+  edges: { from: string; to: string; label?: string }[];
+} {
+  return {
+    nodes: def.nodes.map((n) => {
+      const data: Record<string, unknown> = { ...(n.data ?? {}) };
+      if (n.label) data.label = n.label;
+      return { id: n.id, type: n.type, data };
+    }),
+    edges: def.edges.map((e) => ({
+      from: e.from,
+      to: e.to,
+      ...(e.if ? { label: e.if } : {}),
+    })),
+  };
+}
+
+/**
+ * Tenant/DB shape → editor shape. Tolerant on purpose: rows already in the
+ * database include both the {data:{label}} style and a flat {label} style.
+ */
+export function fromTenantDefinition(raw: unknown): WorkflowDefinition {
+  const def = (raw ?? {}) as { nodes?: unknown; edges?: unknown };
+
+  const nodes: WorkflowNode[] = (Array.isArray(def.nodes) ? def.nodes : []).map(
+    (rawNode) => {
+      const n = (rawNode ?? {}) as {
+        id?: unknown;
+        type?: unknown;
+        label?: unknown;
+        data?: Record<string, unknown> | null;
+      };
+      const dataLabel =
+        n.data && typeof n.data.label === "string" ? n.data.label : undefined;
+      return {
+        id: typeof n.id === "string" ? n.id : "",
+        type: typeof n.type === "string" && n.type ? n.type : "step",
+        label: typeof n.label === "string" ? n.label : dataLabel,
+        ...(n.data ? { data: n.data } : {}),
+      };
+    },
+  );
+
+  const edges: WorkflowEdge[] = (Array.isArray(def.edges) ? def.edges : []).map(
+    (rawEdge) => {
+      const e = (rawEdge ?? {}) as {
+        from?: unknown;
+        to?: unknown;
+        if?: unknown;
+        label?: unknown;
+      };
+      const condition =
+        typeof e.if === "string"
+          ? e.if
+          : typeof e.label === "string"
+            ? e.label
+            : undefined;
+      return {
+        from: typeof e.from === "string" ? e.from : "",
+        to: typeof e.to === "string" ? e.to : "",
+        ...(condition ? { if: condition } : {}),
+      };
+    },
+  );
+
+  return { nodes, edges };
+}
+
 /**
  * Layers nodes by longest distance from the trigger for the step-flow
  * preview. Unreachable nodes are appended after the last layer.
  */
 export function layerNodes(def: WorkflowDefinition): WorkflowNode[][] {
   const byId = new Map(def.nodes.map((n) => [n.id, n]));
-  const trigger = def.nodes.find((n) => n.type === "trigger") ?? def.nodes[0];
+  const trigger =
+    def.nodes.find((n) => ENTRY_TYPES.has(n.type)) ?? def.nodes[0];
 
   const depth = new Map<string, number>([[trigger.id, 0]]);
   // Bellman-Ford-ish relaxation, bounded so cycles can't spin forever.

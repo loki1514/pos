@@ -14,14 +14,14 @@ import { setWorkflowActiveAction } from "@/app/admin/workflows/actions";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
 import { haptic } from "@/lib/haptics";
-import type { WorkflowDefinition } from "./definition";
+import { fromTenantDefinition } from "./definition";
 import { EdgeList, FlowPreview } from "./FlowPreview";
 import { WorkflowEditor, type EditorTarget } from "./WorkflowEditor";
 
 const MODULE_BADGE: Record<string, { bg: string; fg: string }> = {
   orders: { bg: "rgb(180 238 42 / 0.16)", fg: "var(--lime-deep)" },
   pos: { bg: "rgb(88 140 255 / 0.14)", fg: "#3b6fe0" },
-  kot: { bg: "rgb(242 169 59 / 0.14)", fg: "var(--warn)" },
+  kds_kot: { bg: "rgb(242 169 59 / 0.14)", fg: "var(--warn)" },
   inventory: { bg: "rgb(150 120 220 / 0.14)", fg: "#7a5cc0" },
 };
 
@@ -231,7 +231,10 @@ export function WorkflowsManager({
               bg: "rgb(18 21 15 / 0.06)",
               fg: "var(--ink)",
             };
-            const definition = latest.definition as WorkflowDefinition;
+            // DB rows use the tenant shape ({id, type, data:{label}}) — the
+            // seeded qr_ordering template even uses a flat {label} style.
+            // Normalize to the editor shape for preview + editing.
+            const definition = fromTenantDefinition(latest.definition);
             return (
               <article
                 key={groupKey}
@@ -289,6 +292,7 @@ export function WorkflowsManager({
                         onClick={() =>
                           setEditor({
                             mode: "edit",
+                            id: latest.id,
                             key: groupKey,
                             name: latest.name,
                             module: latest.module,

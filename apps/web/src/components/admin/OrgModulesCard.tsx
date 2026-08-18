@@ -11,28 +11,38 @@ export type OrgModule = Module & { enabled: boolean };
 
 /** Preferred display order for module groups; unknown groups append after. */
 const GROUP_ORDER = [
-  "Dashboard",
-  "Orders",
-  "POS",
-  "KDS / KOT",
-  "Menu",
-  "Inventory",
-  "Finance",
-  "Marketing / CRM",
-  "Staff",
-  "Settings",
+  "Overview",
+  "Operations",
+  "Catalog",
+  "Back Office",
+  "Growth",
+  "Configuration",
 ];
+
+/** Group label used for catalog rows whose group is NULL. */
+const UNGROUPED = "Other";
 
 /**
  * Submodules that actually exist in the product today. Everything else gets
- * "Coming soon" styling. Keyed as "<group lowercased> > <submodule lowercased>".
+ * "Coming soon" styling. Keyed as "<module key> > <submodule key or name>",
+ * all lowercased — matched against the submodule key when one exists, else
+ * its display name.
  */
 const BUILT_SUBMODULES = new Set([
+  "orders > live_orders",
   "orders > live orders",
   "pos > billing",
-  "kds / kot > kitchen screen",
+  "kds_kot > kitchen_screen",
+  "kds_kot > kitchen screen",
   "menu > items",
 ]);
+
+function isBuilt(moduleKey: string, sub: { key: string; name: string }): boolean {
+  if (sub.key && BUILT_SUBMODULES.has(`${moduleKey} > ${sub.key.toLowerCase()}`)) {
+    return true;
+  }
+  return BUILT_SUBMODULES.has(`${moduleKey} > ${sub.name.toLowerCase()}`);
+}
 
 function groupRank(group: string): number {
   const i = GROUP_ORDER.findIndex(
@@ -137,9 +147,10 @@ export function OrgModulesCard({
 }) {
   const groups = new Map<string, OrgModule[]>();
   for (const m of modules) {
-    const list = groups.get(m.group) ?? [];
+    const group = m.group ?? UNGROUPED;
+    const list = groups.get(group) ?? [];
     list.push(m);
-    groups.set(m.group, list);
+    groups.set(group, list);
   }
   const ordered = [...groups.entries()].sort(
     (a, b) => groupRank(a[0]) - groupRank(b[0]),
@@ -217,12 +228,10 @@ export function OrgModulesCard({
                         {mod.submodules.length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             {mod.submodules.map((sub) => {
-                              const built = BUILT_SUBMODULES.has(
-                                `${mod.group.toLowerCase()} > ${sub.toLowerCase()}`,
-                              );
+                              const built = isBuilt(mod.key, sub);
                               return (
                                 <span
-                                  key={sub}
+                                  key={sub.key || sub.name}
                                   className={cn(
                                     "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11.5px] font-semibold",
                                     built
@@ -241,7 +250,7 @@ export function OrgModulesCard({
                                   }
                                 >
                                   {!built && <Hammer size={9} />}
-                                  {sub}
+                                  {sub.name}
                                   {!built && (
                                     <span className="opacity-75">
                                       · Coming soon

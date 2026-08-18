@@ -454,3 +454,38 @@ export async function deleteWorkflow(id: string): Promise<void> {
   const { error } = await supabaseAdmin.from("org_workflows").delete().eq("id", id);
   if (error) throw new Error(`deleteWorkflow: ${error.message}`);
 }
+
+// ---------------------------------------------------------------------------
+// Additive helpers (post-merge reconciliation)
+// ---------------------------------------------------------------------------
+
+export type ModuleWithOrgCount = Module & { orgsEnabled: number };
+
+/**
+ * Module registry joined with adoption counts: how many distinct
+ * organizations have each module enabled (org_modules.enabled = true).
+ * Powers /admin/modules.
+ */
+export async function listModulesWithOrgCounts(): Promise<ModuleWithOrgCount[]> {
+  const [modules, { data, error }] = await Promise.all([
+    listModules(),
+    supabaseAdmin
+      .from("org_modules")
+      .select("module_key, organization_id")
+      .eq("enabled", true),
+  ]);
+
+  if (error) throw new Error(`listModulesWithOrgCounts: ${error.message}`);
+
+  const counts = new Map<string, Set<string>>();
+  for (const row of data ?? []) {
+    const set = counts.get(row.module_key) ?? new Set<string>();
+    set.add(row.organization_id);
+    counts.set(row.module_key, set);
+  }
+
+  return modules.map((m) => ({
+    ...m,
+    orgsEnabled: counts.get(m.key)?.size ?? 0,
+  }));
+}

@@ -39,6 +39,11 @@ const NODE_STYLE: Record<
     dot: "var(--lime-bright)",
   },
 };
+// Seed-era types (migration 0007 templates) reuse the canonical styles.
+NODE_STYLE.start = NODE_STYLE.trigger;
+NODE_STYLE.task = NODE_STYLE.step;
+NODE_STYLE.action = NODE_STYLE.step;
+NODE_STYLE.state = NODE_STYLE.condition;
 
 function NodeChip({
   def,

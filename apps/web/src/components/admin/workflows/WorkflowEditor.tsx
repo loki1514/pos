@@ -29,6 +29,7 @@ import {
   WORKFLOW_MODULES,
   type WorkflowDefinition,
   type WorkflowEdge,
+  type WorkflowModule,
   type WorkflowNode,
 } from "./definition";
 import { FlowPreview } from "./FlowPreview";
@@ -55,6 +56,8 @@ export type EditorTarget =
   | { mode: "create" }
   | {
       mode: "edit";
+      /** Row id of the version being edited — saveWorkflow bumps from it. */
+      id: string;
       key: string;
       name: string;
       module: string;
@@ -229,7 +232,8 @@ export function WorkflowEditor({
               </h2>
               <p className="mt-1 text-[13px] text-muted">
                 Saving always creates the next version — existing versions and
-                in-flight orders are untouched.
+                in-flight orders are untouched. The new version starts active;
+                switch it off anytime.
               </p>
             </div>
             <button
@@ -248,6 +252,9 @@ export function WorkflowEditor({
               name="mode"
               value={target.mode === "create" ? "create" : "edit"}
             />
+            {target.mode === "edit" && (
+              <input type="hidden" name="id" value={target.id} />
+            )}
             <input type="hidden" name="definition" value={submittedDefinition} />
 
             <div className="grid gap-4 sm:grid-cols-3">
@@ -318,7 +325,10 @@ export function WorkflowEditor({
                   onChange={(e) => setModule(e.target.value)}
                   className={FIELD}
                 >
-                  {WORKFLOW_MODULES.map((m) => (
+                  {(WORKFLOW_MODULES.includes(module as WorkflowModule)
+                    ? WORKFLOW_MODULES
+                    : [...WORKFLOW_MODULES, module]
+                  ).map((m) => (
                     <option key={m} value={m}>
                       {m}
                     </option>

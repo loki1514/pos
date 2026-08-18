@@ -4,9 +4,9 @@ import { revalidatePath } from "next/cache";
 import { requirePlatformAdmin } from "@/lib/platform-admin";
 import {
   addOrgDomain,
-  markDomainVerified,
+  markOrgDomainVerified,
   removeOrgDomain,
-  setOrgModule,
+  setOrgModuleEnabled,
 } from "@/lib/tenant";
 
 export type ModuleToggleState = { ok: boolean; error: string | null };
@@ -18,7 +18,7 @@ export async function setOrgModuleAction(
 ): Promise<ModuleToggleState> {
   try {
     await requirePlatformAdmin();
-    await setOrgModule(organizationId, moduleKey, enabled);
+    await setOrgModuleEnabled(organizationId, moduleKey, enabled);
     revalidatePath(`/admin/organizations/${organizationId}`);
     revalidatePath("/admin/modules");
     return { ok: true, error: null };
@@ -105,7 +105,7 @@ export async function markDomainVerifiedAction(
     // Manual verification for now. Later phase: verify DNS via the Vercel
     // Domains API — POST /v10/projects/{id}/domains (and the verify endpoint)
     // goes here, then persist verified_at on success.
-    await markDomainVerified(domainId);
+    await markOrgDomainVerified(domainId);
     revalidatePath(`/admin/organizations/${organizationId}`);
     return { ok: true, error: null };
   } catch (err) {

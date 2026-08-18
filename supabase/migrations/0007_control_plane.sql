@@ -338,6 +338,26 @@ from ( values
       {"from": "payment", "to": "kot"},
       {"from": "kot",     "to": "ready"},
       {"from": "ready",   "to": "end"}
+    ]}'::jsonb),
+  -- As applied to the remote database, this third template exists alongside
+  -- the two above. Its definition uses the flat editor shape (nodes carry a
+  -- top-level "label" instead of data.label); the shape check below only
+  -- requires nodes/edges arrays, and lib/tenant.ts normalizes both styles.
+  (null, 'qr_ordering', 'QR Ordering', 'orders', 1,
+   '{"nodes": [
+      {"id": "trigger",   "type": "trigger", "label": "QR Order"},
+      {"id": "payment",   "type": "step",    "label": "Payment"},
+      {"id": "kot",       "type": "step",    "label": "KOT"},
+      {"id": "ready",     "type": "step",    "label": "Ready"},
+      {"id": "table",     "type": "step",    "label": "Table"},
+      {"id": "completed", "type": "end",     "label": "Completed"}
+    ],
+    "edges": [
+      {"from": "trigger", "to": "payment"},
+      {"from": "payment", "to": "kot"},
+      {"from": "kot",     "to": "ready"},
+      {"from": "ready",   "to": "table"},
+      {"from": "table",   "to": "completed"}
     ]}'::jsonb)
 ) as seed (organization_id, key, name, module, version, definition)
 where not exists (

@@ -14,7 +14,7 @@ export default async function WorkflowsPage() {
         <h1 className="t-h1">Workflows</h1>
         <p className="mt-2 max-w-2xl text-[15px] text-muted">
           Workflows are versioned JSON. In-flight orders keep the version they
-          started with — editing creates a new version.
+          started with — editing creates a new version, which starts active.
         </p>
       </div>
 
