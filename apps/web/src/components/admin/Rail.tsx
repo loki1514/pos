@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Blocks,
   Building2,
   ChefHat,
   LayoutDashboard,
@@ -22,6 +23,7 @@ const NAV = [
   { href: "/admin/locations", label: "Locations", icon: MapPin },
   { href: "/admin/operations", label: "Operations", icon: ChefHat },
   { href: "/admin/roles", label: "Roles", icon: ShieldCheck },
+  { href: "/admin/modules", label: "Modules", icon: Blocks },
 ];
 
 const FOOT = [

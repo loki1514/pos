@@ -10,9 +10,16 @@ import {
   Phone,
 } from "lucide-react";
 import { AdminCredentialCard } from "@/components/admin/AdminCredentialCard";
+import { OrgDomainsCard } from "@/components/admin/OrgDomainsCard";
+import { OrgModulesCard, type OrgModule } from "@/components/admin/OrgModulesCard";
 import { InviteCard } from "@/components/shared/InviteCard";
 import { getOrgAdmin, getOrganization, type OrgStatus } from "@/lib/organizations";
 import { listInvites } from "@/lib/invites";
+import {
+  listOrgDomains,
+  listOrgModules,
+  type OrgDomain,
+} from "@/lib/tenant";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { createInviteAction } from "../actions";
 
@@ -53,6 +60,23 @@ export default async function OrganizationDetailPage({
 
   if (!organization) notFound();
   const roles = rolesResult.data ?? [];
+
+  // Control-plane data (modules / domains). The tenant data layer may still
+  // be a stub pre-merge — degrade to empty cards instead of failing the page.
+  let orgModules: OrgModule[] = [];
+  let orgDomains: OrgDomain[] = [];
+  let modulesWired = true;
+  let domainsWired = true;
+  try {
+    orgModules = await listOrgModules(id);
+  } catch {
+    modulesWired = false;
+  }
+  try {
+    orgDomains = await listOrgDomains(id);
+  } catch {
+    domainsWired = false;
+  }
 
   const s = STATUS[organization.status];
 
@@ -139,6 +163,20 @@ export default async function OrganizationDetailPage({
         createAction={createInviteAction}
         roles={roles}
         invites={invites}
+      />
+
+      {/* Control plane — per-org module toggles */}
+      <OrgModulesCard
+        organizationId={organization.id}
+        modules={orgModules}
+        wired={modulesWired}
+      />
+
+      {/* Control plane — subdomain + custom domain management */}
+      <OrgDomainsCard
+        organizationId={organization.id}
+        domains={orgDomains}
+        wired={domainsWired}
       />
 
       {/* Billing — honest placeholder, no billing schema exists yet */}
