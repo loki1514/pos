@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Blocks,
   Building2,
   ChefHat,
   LayoutDashboard,
@@ -11,6 +12,7 @@ import {
   Settings,
   ShieldCheck,
   Users,
+  Workflow,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { haptic } from "@/lib/haptics";
@@ -22,6 +24,8 @@ const NAV = [
   { href: "/admin/locations", label: "Locations", icon: MapPin },
   { href: "/admin/operations", label: "Operations", icon: ChefHat },
   { href: "/admin/roles", label: "Roles", icon: ShieldCheck },
+  { href: "/admin/modules", label: "Modules", icon: Blocks },
+  { href: "/admin/workflows", label: "Workflows", icon: Workflow },
 ];
 
 const FOOT = [

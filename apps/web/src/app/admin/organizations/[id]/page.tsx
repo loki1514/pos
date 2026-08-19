@@ -10,9 +10,17 @@ import {
   Phone,
 } from "lucide-react";
 import { AdminCredentialCard } from "@/components/admin/AdminCredentialCard";
+import { OrgDomainsCard } from "@/components/admin/OrgDomainsCard";
+import { OrgModulesCard, type OrgModule } from "@/components/admin/OrgModulesCard";
 import { InviteCard } from "@/components/shared/InviteCard";
 import { getOrgAdmin, getOrganization, type OrgStatus } from "@/lib/organizations";
 import { listInvites } from "@/lib/invites";
+import {
+  listModules,
+  listOrgDomains,
+  listOrgModules,
+  type OrgDomain,
+} from "@/lib/tenant";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { createInviteAction } from "../actions";
 
@@ -53,6 +61,34 @@ export default async function OrganizationDetailPage({
 
   if (!organization) notFound();
   const roles = rolesResult.data ?? [];
+
+  // Control-plane data (modules / domains). listOrgModules returns only the
+  // toggle rows that exist in org_modules — merge them with the module
+  // catalog here: a module is on when its toggle row says so, and core
+  // modules default to on when no row exists. Degrade to empty cards instead
+  // of failing the page if the control-plane tables are missing.
+  let orgModules: OrgModule[] = [];
+  let orgDomains: OrgDomain[] = [];
+  let modulesWired = true;
+  let domainsWired = true;
+  try {
+    const [catalog, toggles] = await Promise.all([
+      listModules(),
+      listOrgModules(id),
+    ]);
+    const byKey = new Map(toggles.map((t) => [t.module_key, t]));
+    orgModules = catalog.map((m) => ({
+      ...m,
+      enabled: byKey.get(m.key)?.enabled ?? m.is_core,
+    }));
+  } catch {
+    modulesWired = false;
+  }
+  try {
+    orgDomains = await listOrgDomains(id);
+  } catch {
+    domainsWired = false;
+  }
 
   const s = STATUS[organization.status];
 
@@ -139,6 +175,20 @@ export default async function OrganizationDetailPage({
         createAction={createInviteAction}
         roles={roles}
         invites={invites}
+      />
+
+      {/* Control plane — per-org module toggles */}
+      <OrgModulesCard
+        organizationId={organization.id}
+        modules={orgModules}
+        wired={modulesWired}
+      />
+
+      {/* Control plane — subdomain + custom domain management */}
+      <OrgDomainsCard
+        organizationId={organization.id}
+        domains={orgDomains}
+        wired={domainsWired}
       />
 
       {/* Billing — honest placeholder, no billing schema exists yet */}
