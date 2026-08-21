@@ -10,6 +10,7 @@ import {
   Phone,
 } from "lucide-react";
 import { AdminCredentialCard } from "@/components/admin/AdminCredentialCard";
+import { OrgAppearanceCard } from "@/components/admin/OrgAppearanceCard";
 import { OrgDomainsCard } from "@/components/admin/OrgDomainsCard";
 import { OrgModulesCard, type OrgModule } from "@/components/admin/OrgModulesCard";
 import { InviteCard } from "@/components/shared/InviteCard";
@@ -22,6 +23,7 @@ import {
   type OrgDomain,
 } from "@/lib/tenant";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import type { OrgTheme } from "@/lib/theme";
 import { createInviteAction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -175,6 +177,13 @@ export default async function OrganizationDetailPage({
         createAction={createInviteAction}
         roles={roles}
         invites={invites}
+      />
+
+      {/* Appearance — per-org accent, typeface, ambient weather */}
+      <OrgAppearanceCard
+        organizationId={organization.id}
+        orgName={organization.name}
+        initial={(organization as { theme?: OrgTheme }).theme ?? {}}
       />
 
       {/* Control plane — per-org module toggles */}

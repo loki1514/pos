@@ -116,6 +116,52 @@
   --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
 }
 
+
+/* ============================================================
+   Chameleon — per-org appearance (see lib/theme.ts)
+
+   Registering the accent vars with @property is what makes a theme change
+   *flow* instead of snapping: the browser can interpolate a registered
+   <color>, but not a plain custom property. Browsers without @property
+   (older Safari) simply snap — acceptable, and needs no feature detection.
+   ============================================================ */
+
+@property --lime {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #b4ee2a;
+}
+@property --lime-bright {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #d6ff63;
+}
+@property --lime-deep {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #79bc0d;
+}
+@property --lime-ink {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #1a2800;
+}
+
+/* One rule animates the entire shell, because every surface reads these. */
+.chameleon {
+  transition:
+    --lime 600ms ease,
+    --lime-bright 600ms ease,
+    --lime-deep 600ms ease,
+    --lime-ink 600ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chameleon {
+    transition: none;
+  }
+}
+
 /* ============================================================
    Base
    ============================================================ */
@@ -131,7 +177,7 @@ html {
 body {
   background: var(--canvas);
   color: var(--ink);
-  font-family: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-body, var(--font-jakarta)), ui-sans-serif, system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.6;
   letter-spacing: -0.005em;

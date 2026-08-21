@@ -17,6 +17,7 @@ import { haptic } from "@/lib/haptics";
 import { fromTenantDefinition } from "./definition";
 import { EdgeList, FlowPreview } from "./FlowPreview";
 import { WorkflowEditor, type EditorTarget } from "./WorkflowEditor";
+import type { ModuleInput, RoleAccess } from "./canvas/nodeKinds";
 
 const MODULE_BADGE: Record<string, { bg: string; fg: string }> = {
   orders: { bg: "rgb(180 238 42 / 0.16)", fg: "var(--lime-deep)" },
@@ -181,8 +182,19 @@ function VersionsDrawer({
 
 export function WorkflowsManager({
   templates,
+  organizationId = null,
+  scopeLabel = "All organizations",
+  roles = [],
+  modules = [],
+  roleAccess = [],
 }: {
   templates: OrgWorkflow[];
+  /** null = editing platform templates; a uuid = editing one org's workflows. */
+  organizationId?: string | null;
+  scopeLabel?: string;
+  roles?: { slug: string; name: string }[];
+  modules?: ModuleInput[];
+  roleAccess?: RoleAccess[];
 }) {
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [versionsFor, setVersionsFor] = useState<string | null>(null);
@@ -317,6 +329,11 @@ export function WorkflowsManager({
           target={editor}
           existingKeys={existingKeys}
           onClose={() => setEditor(null)}
+          organizationId={organizationId}
+          scopeLabel={scopeLabel}
+          roles={roles}
+          modules={modules}
+          roleAccess={roleAccess}
         />
       )}
 

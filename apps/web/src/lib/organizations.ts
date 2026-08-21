@@ -35,7 +35,7 @@ export async function getOrganization(id: string): Promise<Organization | null> 
   const { data, error } = await supabaseAdmin
     .from("organizations")
     .select(
-      "id, name, slug, type, status, legal_name, gstin, contact_email, contact_phone, created_at",
+      "id, name, slug, type, status, legal_name, gstin, contact_email, contact_phone, created_at, theme",
     )
     .eq("id", id)
     .maybeSingle();

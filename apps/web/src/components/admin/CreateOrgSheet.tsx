@@ -230,7 +230,7 @@ export function CreateOrgSheet() {
                       <p className="mt-1.5 t-small text-muted">
                         URL:{" "}
                         <span className="tnum font-semibold text-ink-2">
-                          vinipos.co/{slugify(name) || "…"}
+                          vinipos.com/{slugify(name) || "…"}
                         </span>
                       </p>
                     )}

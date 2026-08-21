@@ -86,7 +86,7 @@ export type OrgWorkflow = {
 // ---------------------------------------------------------------------------
 
 export function platformBaseDomain(): string {
-  return (process.env.PLATFORM_BASE_DOMAIN ?? "vinipos.co").toLowerCase();
+  return (process.env.PLATFORM_BASE_DOMAIN ?? "vinipos.com").toLowerCase();
 }
 
 /**
@@ -123,7 +123,7 @@ export async function resolveHostToOrg(host: string): Promise<OrgRef | null> {
   // 1. Platform subdomain: leftmost label is the organization slug.
   if (name === base || name.endsWith(`.${base}`)) {
     const slug = name.slice(0, name.length - base.length - 1);
-    // Multi-label prefixes (a.b.vinipos.co) are not tenant slugs.
+    // Multi-label prefixes (a.b.vinipos.com) are not tenant slugs.
     if (!slug || slug.includes(".")) return null;
 
     const { data, error } = await supabaseAdmin
@@ -488,4 +488,55 @@ export async function listModulesWithOrgCounts(): Promise<ModuleWithOrgCount[]> 
     ...m,
     orgsEnabled: counts.get(m.key)?.size ?? 0,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Role → module visibility (migration 0008)
+// ---------------------------------------------------------------------------
+
+export type RoleModuleRule = {
+  role_id: string;
+  module_key: string;
+  visible: boolean;
+  organization_id: string | null;
+};
+
+/**
+ * Every rule in scope: platform defaults plus, when orgId is given, that
+ * organization's overrides. Callers resolve precedence (org row wins).
+ */
+export async function listRoleModuleAccess(
+  orgId?: string | null,
+): Promise<RoleModuleRule[]> {
+  let query = supabaseAdmin
+    .from("role_module_access")
+    .select("role_id, module_key, visible, organization_id");
+
+  query = orgId
+    ? query.or(`organization_id.is.null,organization_id.eq.${orgId}`)
+    : query.is("organization_id", null);
+
+  const { data, error } = await query;
+  if (error) throw new Error(`listRoleModuleAccess: ${error.message}`);
+  return (data ?? []) as RoleModuleRule[];
+}
+
+/**
+ * Upsert one (scope, role, module) rule. organizationId null edits the
+ * platform default; a uuid creates or updates that org's override.
+ */
+export async function setRoleModuleVisible(
+  organizationId: string | null,
+  roleId: string,
+  moduleKey: string,
+  visible: boolean,
+): Promise<void> {
+  const { error } = await supabaseAdmin
+    .from("role_module_access")
+    .upsert(
+      { organization_id: organizationId, role_id: roleId, module_key: moduleKey, visible },
+      { onConflict: "organization_id,role_id,module_key" },
+    );
+
+  if (error) throw new Error(`setRoleModuleVisible: ${error.message}`);
 }

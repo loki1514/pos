@@ -1,6 +1,7 @@
 import "server-only";
 import { supabaseServer } from "@/lib/supabase-server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import type { OrgTheme } from "@/lib/theme";
 
 export type Role = {
   id: string;
@@ -30,6 +31,8 @@ export type MyOrg = {
   legal_name: string | null;
   gstin: string | null;
   created_at: string;
+  /** Per-org appearance (migration 0009). */
+  theme: OrgTheme;
   /** Role of the currently signed-in user within this organization. */
   myRole: string;
 };
@@ -53,7 +56,7 @@ export async function getMyOrg(): Promise<MyOrg | null> {
        roles!inner(slug),
        organizations!inner(
          id, name, slug, type, status,
-         contact_email, contact_phone, legal_name, gstin, created_at
+         contact_email, contact_phone, legal_name, gstin, created_at, theme
        )`,
     )
     .eq("user_id", user.id)

@@ -55,15 +55,15 @@ export async function addOrgDomainAction(
     if (!raw) return { ok: false, error: "Enter a domain." };
 
     // Subdomain kind: accept a bare slug ("krave") and expand it, or a full
-    // <slug>.vinipos.co host. Custom kind: must be a full hostname.
+    // <slug>.vinipos.com host. Custom kind: must be a full hostname.
     let domain = raw;
     if (kind === "subdomain") {
       if (SLUG_RE.test(raw)) {
-        domain = `${raw}.vinipos.co`;
+        domain = `${raw}.vinipos.com`;
       } else if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.vinipos\.co$/i.test(raw)) {
         return {
           ok: false,
-          error: "Subdomain must be a slug like krave, or krave.vinipos.co.",
+          error: "Subdomain must be a slug like krave, or krave.vinipos.com.",
         };
       }
     }

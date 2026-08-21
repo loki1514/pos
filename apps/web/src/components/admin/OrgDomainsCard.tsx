@@ -82,7 +82,7 @@ function DomainRow({
               : "border border-[var(--line-strong)] text-ink-2",
           )}
         >
-          {domain.kind === "subdomain" ? "vinipos.co subdomain" : "custom"}
+          {domain.kind === "subdomain" ? "vinipos.com subdomain" : "custom"}
         </span>
 
         <span
@@ -189,7 +189,7 @@ export function OrgDomainsCard({
         </div>
 
         <p className="mt-3 max-w-xl t-small text-muted">
-          Every org gets &lt;slug&gt;.vinipos.co free. Custom domains (e.g.
+          Every org gets &lt;slug&gt;.vinipos.com free. Custom domains (e.g.
           pos.krave.com) are added here — client points a CNAME to
           cname.vercel-dns.com.
         </p>
@@ -209,7 +209,7 @@ export function OrgDomainsCard({
           </div>
         ) : domains.length === 0 ? (
           <p className="mt-4 rounded-[12px] px-3.5 py-3 text-[13px] text-muted glass-inset">
-            No domains yet. Every org gets &lt;slug&gt;.vinipos.co free. Custom
+            No domains yet. Every org gets &lt;slug&gt;.vinipos.com free. Custom
             domains (e.g. pos.krave.com) are added here — client points a CNAME
             to cname.vercel-dns.com.
           </p>
@@ -240,7 +240,7 @@ export function OrgDomainsCard({
             />
             {kind === "subdomain" && (
               <p className="mt-1.5 t-small text-muted">
-                Becomes &lt;slug&gt;.vinipos.co
+                Becomes &lt;slug&gt;.vinipos.com
               </p>
             )}
           </div>
@@ -255,7 +255,7 @@ export function OrgDomainsCard({
               onChange={(e) => setKind(e.target.value as "subdomain" | "custom")}
               className="glass-inset h-10 rounded-[12px] px-3 text-[13.5px] font-semibold outline-none"
             >
-              <option value="subdomain">&lt;slug&gt;.vinipos.co</option>
+              <option value="subdomain">&lt;slug&gt;.vinipos.com</option>
               <option value="custom">Custom domain</option>
             </select>
           </div>

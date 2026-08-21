@@ -83,7 +83,7 @@ async function resolveTenantHost(host: string): Promise<TenantRef | null> {
   const cached = cacheGet(name);
   if (cached !== undefined) return cached;
 
-  const base = (process.env.PLATFORM_BASE_DOMAIN ?? "vinipos.co").toLowerCase();
+  const base = (process.env.PLATFORM_BASE_DOMAIN ?? "vinipos.com").toLowerCase();
   let resolved: TenantRef | null = null;
 
   // Hosts that never belong to a tenant: the bare platform domain, localhost,

@@ -69,11 +69,16 @@ export async function saveWorkflowAction(
       return { ...INITIAL, error: defError ?? "Definition is invalid." };
     }
 
+    // Scope: empty/"platform" → a template every org inherits (organization_id
+    // NULL). A uuid → a workflow owned by that one organization.
+    const scope = String(formData.get("organizationId") ?? "").trim();
+    const organizationId = scope && scope !== "platform" ? scope : null;
+
     const saved = await saveWorkflow({
       // With an id, saveWorkflow bumps that key's latest version and ignores
       // key/organizationId — the key stays immutable, as the editor promises.
       id: mode === "edit" ? id : undefined,
-      organizationId: null, // platform template
+      organizationId,
       key,
       name,
       module,

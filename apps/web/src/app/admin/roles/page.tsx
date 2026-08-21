@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { listModules, listRoleModuleAccess } from "@/lib/tenant";
+import { RoleAccessMatrix } from "@/components/admin/RoleAccessMatrix";
 
 export const metadata: Metadata = { title: "Roles" };
 export const dynamic = "force-dynamic";
@@ -32,6 +34,27 @@ export default async function RolesPage() {
 
   const system = (roles ?? []).filter((r) => r.is_system);
   const custom = (roles ?? []).filter((r) => !r.is_system);
+
+  // Role × module visibility (migration 0008). Degrade to no matrix rather
+  // than failing the whole page if the migration hasn't been applied.
+  let matrix: {
+    modules: { key: string; name: string; is_core: boolean }[];
+    initial: string[];
+  } | null = null;
+  try {
+    const [modules, rules] = await Promise.all([
+      listModules(),
+      listRoleModuleAccess(null),
+    ]);
+    matrix = {
+      modules: modules.map((m) => ({ key: m.key, name: m.name, is_core: m.is_core })),
+      initial: rules
+        .filter((r) => r.visible)
+        .map((r) => `${r.role_id}:${r.module_key}`),
+    };
+  } catch {
+    matrix = null;
+  }
 
   return (
     <div className="space-y-5">
@@ -83,6 +106,15 @@ export default async function RolesPage() {
           );
         })}
       </div>
+
+      {matrix && (
+        <RoleAccessMatrix
+          roles={system.map((r) => ({ id: r.id, slug: r.slug, name: r.name }))}
+          modules={matrix.modules}
+          initial={matrix.initial}
+          passcodeConfigured={Boolean(process.env.ADMIN_BUILDER_PASSCODE)}
+        />
+      )}
 
       {custom.length > 0 && (
         <div className="glass rounded-[var(--r-xl)] p-5 sm:p-6">

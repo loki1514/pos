@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useFormStatus } from "react-dom";
 import {
   Braces,
@@ -11,6 +12,7 @@ import {
   Save,
   Trash2,
   TriangleAlert,
+  Workflow,
   X,
 } from "lucide-react";
 import {
@@ -33,6 +35,8 @@ import {
   type WorkflowNode,
 } from "./definition";
 import { FlowPreview } from "./FlowPreview";
+import { FlowCanvas } from "./canvas/FlowCanvas";
+import type { ModuleInput, RoleAccess } from "./canvas/nodeKinds";
 
 const FIELD =
   "glass-inset h-11 w-full rounded-[13px] px-3.5 text-[14.5px] font-medium " +
@@ -93,11 +97,23 @@ export function WorkflowEditor({
   target,
   existingKeys,
   onClose,
+  organizationId = null,
+  scopeLabel = "All organizations",
+  roles = [],
+  modules = [],
+  roleAccess = [],
 }: {
   target: EditorTarget;
-  /** Keys already in use at platform level — guards create-mode collisions. */
+  /** Keys already in use in the current scope — guards create-mode collisions. */
   existingKeys: string[];
   onClose: () => void;
+  /** null = platform template inherited by every org; a uuid = one org only. */
+  organizationId?: string | null;
+  scopeLabel?: string;
+  /** Fed to the canvas so blocks speak in real modules, not abstractions. */
+  roles?: { slug: string; name: string }[];
+  modules?: ModuleInput[];
+  roleAccess?: RoleAccess[];
 }) {
   const [state, formAction] = useActionState(saveWorkflowAction, INITIAL_STATE);
 
@@ -116,9 +132,15 @@ export function WorkflowEditor({
       ? target.definition.edges.map((e) => ({ ...e }))
       : [],
   );
-  const [view, setView] = useState<"form" | "json">("form");
+  const [view, setView] = useState<"form" | "json" | "canvas">("canvas");
+  // Canvas edits publish straight into this, bypassing the list editor.
+  const [canvasDef, setCanvasDef] = useState<WorkflowDefinition | null>(null);
   const [jsonText, setJsonText] = useState("");
   const [jsonError, setJsonError] = useState<string | null>(null);
+
+  // Portals need a DOM target, which does not exist during SSR.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const nextNodeId = useRef(nodes.length + 1);
   const closeRef = useRef(onClose);
@@ -145,24 +167,60 @@ export function WorkflowEditor({
   );
 
   // The definition that will actually be submitted.
-  const submittedDefinition = view === "json" ? jsonText : JSON.stringify(structured);
-  const formError = validateDefinition(structured);
+  const submittedDefinition =
+    view === "json"
+      ? jsonText
+      : JSON.stringify(view === "canvas" && canvasDef ? canvasDef : structured);
+  // The definition the Save button is actually judging. Previously this was
+  // always `structured` (the LIST editor's state), so anything built on the
+  // canvas never satisfied validation and Save stayed disabled forever.
+  const effectiveDef = useMemo(() => {
+    if (view === "json") return parseDefinition(jsonText).definition ?? structured;
+    if (view === "canvas" && canvasDef) return canvasDef;
+    return structured;
+  }, [view, jsonText, canvasDef, structured]);
+
+  const formError = validateDefinition(effectiveDef);
   const liveError = view === "json" ? jsonError : formError;
 
-  const previewDef = useMemo(() => {
-    if (view === "json") {
-      return parseDefinition(jsonText).definition ?? structured;
-    }
-    return structured;
-  }, [view, jsonText, structured]);
+  const previewDef = effectiveDef;
 
-  function switchView(next: "form" | "json") {
+  function switchView(next: "form" | "json" | "canvas") {
     haptic("light");
     if (next === view) return;
     if (next === "json") {
-      setJsonText(JSON.stringify(structured, null, 2));
+      setJsonText(
+        JSON.stringify(view === "canvas" && canvasDef ? canvasDef : structured, null, 2),
+      );
       setJsonError(null);
       setView("json");
+      return;
+    }
+    if (next === "canvas") {
+      // Leaving JSON for the canvas: adopt the JSON only if it parses.
+      if (view === "json") {
+        const parsed = parseDefinition(jsonText);
+        if (parsed.error || !parsed.definition) {
+          setJsonError(parsed.error ?? "Definition is invalid.");
+          return;
+        }
+        setNodes(parsed.definition.nodes);
+        setEdges(parsed.definition.edges);
+        setCanvasDef(parsed.definition);
+      } else {
+        setCanvasDef(structured);
+      }
+      setJsonError(null);
+      setView("canvas");
+      return;
+    }
+    if (view === "canvas") {
+      // Canvas → list: carry the canvas graph across.
+      if (canvasDef) {
+        setNodes(canvasDef.nodes);
+        setEdges(canvasDef.edges);
+      }
+      setView("form");
       return;
     }
     // json → form: only adopt the JSON when it parses clean.
@@ -221,9 +279,28 @@ export function WorkflowEditor({
   const keyTaken =
     target.mode === "create" && key.length > 0 && existingKeys.includes(key);
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-[rgb(18_21_15_/_0.45)] p-4 backdrop-blur-sm sm:p-8">
-      <div className="glass mx-auto max-w-3xl rounded-[var(--r-xl)] p-5 sm:p-7">
+  if (!mounted) return null;
+
+  // Portalled to <body> on purpose. AdminLayout wraps its children in
+  // `relative z-10`, which creates a stacking context — inside it, no
+  // z-index can ever paint above the admin rail (z-40), so the rail bled
+  // over the full-screen canvas. A portal escapes that context entirely.
+  return createPortal(
+    <div
+      className={cn(
+        "fixed inset-0 z-[100] overflow-y-auto bg-[rgb(18_21_15_/_0.45)] backdrop-blur-sm",
+        view === "canvas" ? "p-0" : "p-4 sm:p-8",
+      )}
+    >
+      <div
+        className={cn(
+          view === "canvas"
+            // Full-screen: an OPAQUE surface. Glass here would let the fixed
+            // admin rail underneath show through and clip the header text.
+            ? "min-h-dvh bg-[var(--canvas)] p-4 sm:p-6"
+            : "glass mx-auto max-w-3xl rounded-[var(--r-xl)] p-5 sm:p-7",
+        )}
+      >
         <div className="relative z-10">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -256,6 +333,19 @@ export function WorkflowEditor({
               <input type="hidden" name="id" value={target.id} />
             )}
             <input type="hidden" name="definition" value={submittedDefinition} />
+            <input
+              type="hidden"
+              name="organizationId"
+              value={organizationId ?? "platform"}
+            />
+
+            <p className="t-small text-muted">
+              Saving to{" "}
+              <span className="font-bold text-ink">{scopeLabel}</span>
+              {organizationId
+                ? " — this organization only."
+                : " — inherited by every organization that has no override."}
+            </p>
 
             <div className="grid gap-4 sm:grid-cols-3">
               <div>
@@ -342,7 +432,8 @@ export function WorkflowEditor({
               <div className="glass-inset inline-flex rounded-[12px] p-1">
                 {(
                   [
-                    { v: "form", label: "Builder", icon: ListTree },
+                    { v: "canvas", label: "Canvas", icon: Workflow },
+                    { v: "form", label: "List", icon: ListTree },
                     { v: "json", label: "JSON", icon: Braces },
                   ] as const
                 ).map(({ v, label, icon: Icon }) => (
@@ -369,7 +460,15 @@ export function WorkflowEditor({
               )}
             </div>
 
-            {view === "form" ? (
+            {view === "canvas" ? (
+              <FlowCanvas
+                initial={canvasDef ?? structured}
+                roles={roles}
+                modules={modules}
+                roleAccess={roleAccess}
+                onChange={setCanvasDef}
+              />
+            ) : view === "form" ? (
               <div className="space-y-5">
                 {/* Nodes */}
                 <div>
@@ -526,6 +625,21 @@ export function WorkflowEditor({
               <FlowPreview definition={previewDef} compact />
             </div>
 
+            {/* A disabled Save with no explanation is the most frustrating
+                thing in a builder — name the blocker. */}
+            {!state.error &&
+              (!name.trim() || !key.trim() || liveError || keyTaken) && (
+                <p className="t-small text-muted">
+                  {!name.trim()
+                    ? "Give the workflow a name to save it."
+                    : !key.trim()
+                      ? "Give the workflow a key to save it."
+                      : keyTaken
+                        ? "That key is already used in this scope."
+                        : liveError}
+                </p>
+              )}
+
             {(state.error || (view === "form" && formError)) && (
               <p className="inline-flex items-start gap-1.5 text-[13px] font-semibold text-[var(--danger,var(--warn))]">
                 <TriangleAlert size={15} className="mt-0.5 shrink-0" />
@@ -538,12 +652,13 @@ export function WorkflowEditor({
                 Cancel
               </Button>
               <SubmitButton
-                disabled={Boolean(liveError) || keyTaken || !name.trim()}
+                disabled={Boolean(liveError) || keyTaken || !name.trim() || !key.trim()}
               />
             </div>
           </form>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

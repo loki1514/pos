@@ -8,6 +8,7 @@ import {
   ChefHat,
   ClipboardList,
   CreditCard,
+  HeartHandshake,
   LayoutGrid,
   LifeBuoy,
   type LucideIcon,
@@ -35,46 +36,61 @@ type Item = {
   icon: LucideIcon;
   /** Screens whose module hasn't been built yet still route — they show a Planned page. */
   ready?: boolean;
+  /**
+   * Module key from the registry (migration 0007). When the org has this
+   * module disabled the entry disappears from the nav entirely — not badged,
+   * genuinely absent. Items without a key are org administration, which is
+   * never module-gated.
+   */
+  moduleKey?: string;
 };
 
 const SECTIONS: { heading: string | null; items: Item[] }[] = [
   {
     heading: null,
-    items: [{ href: "/org", label: "Overview", icon: LayoutGrid, ready: true }],
+    items: [
+      { href: "/org", label: "Overview", icon: LayoutGrid, ready: true, moduleKey: "dashboard" },
+    ],
   },
   {
     heading: "Organization",
     items: [
-      { href: "/org/users", label: "Users & Roles", icon: Users, ready: true },
-      { href: "/org/locations", label: "Locations", icon: Building2 },
-      { href: "/org/roles", label: "Permissions", icon: ShieldCheck },
+      // Staff administration — gated on the `staff` module, which by default
+      // only org_admin and manager may see. A captain has no business on the
+      // user roster or the permission matrix.
+      { href: "/org/users", label: "Users & Roles", icon: Users, ready: true, moduleKey: "staff" },
+      { href: "/org/roles", label: "Permissions", icon: ShieldCheck, moduleKey: "staff" },
+      { href: "/org/locations", label: "Locations", icon: Building2, moduleKey: "settings" },
     ],
   },
   {
     heading: "Operations",
     items: [
-      { href: "/org/orders", label: "Live Orders", icon: ClipboardList },
-      { href: "/org/captain", label: "Captain Order", icon: Smartphone },
-      { href: "/org/kot", label: "Kitchen (KOT)", icon: ChefHat },
-      { href: "/org/kds", label: "Kitchen Display", icon: Monitor },
-      { href: "/org/menu-items", label: "Menu Items", icon: UtensilsCrossed, ready: true },
-      { href: "/org/pos", label: "POS Billing", icon: Receipt },
-      { href: "/org/tables", label: "Dining Areas", icon: Utensils },
-      { href: "/org/qr", label: "QR Ordering", icon: QrCode },
-      { href: "/org/delivery", label: "Delivery", icon: Truck },
+      { href: "/org/orders", label: "Live Orders", icon: ClipboardList, moduleKey: "orders" },
+      { href: "/org/captain", label: "Captain Order", icon: Smartphone, moduleKey: "orders" },
+      { href: "/org/kot", label: "Kitchen (KOT)", icon: ChefHat, moduleKey: "kds_kot" },
+      { href: "/org/kds", label: "Kitchen Display", icon: Monitor, moduleKey: "kds_kot" },
+      { href: "/org/menu-items", label: "Menu Items", icon: UtensilsCrossed, ready: true, moduleKey: "menu" },
+      { href: "/org/pos", label: "POS Billing", icon: Receipt, moduleKey: "pos" },
+      { href: "/org/tables", label: "Dining Areas", icon: Utensils, moduleKey: "orders" },
+      { href: "/org/qr", label: "QR Ordering", icon: QrCode, moduleKey: "orders" },
+      { href: "/org/delivery", label: "Delivery", icon: Truck, moduleKey: "orders" },
     ],
   },
   {
     heading: "Business",
     items: [
-      { href: "/org/inventory", label: "Inventory", icon: Package },
-      { href: "/org/payments", label: "Payments", icon: CreditCard },
-      { href: "/org/reports", label: "Reports", icon: BarChart3 },
+      { href: "/org/inventory", label: "Inventory", icon: Package, moduleKey: "inventory" },
+      { href: "/org/customers", label: "Customers & CRM", icon: HeartHandshake, moduleKey: "marketing_crm" },
+      { href: "/org/payments", label: "Payments", icon: CreditCard, moduleKey: "finance" },
+      { href: "/org/reports", label: "Reports", icon: BarChart3, moduleKey: "finance" },
     ],
   },
   {
     heading: null,
-    items: [{ href: "/org/settings", label: "Settings", icon: Settings }],
+    items: [
+      { href: "/org/settings", label: "Settings", icon: Settings, moduleKey: "settings" },
+    ],
   },
 ];
 
@@ -120,15 +136,33 @@ function NavLink({ item, active }: { item: Item; active: boolean }) {
 export function OrgSidebar({
   orgName,
   orgType,
+  enabledModules,
 }: {
   orgName: string;
   orgType: string;
+  /**
+   * Module keys this org may see. `null` means the control plane isn't
+   * available (migration 0007 unapplied) — show everything rather than
+   * blanking the nav.
+   */
+  enabledModules: string[] | null;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
   const isActive = (href: string) =>
     href === "/org" ? pathname === "/org" : pathname.startsWith(href);
+
+  const allowed = enabledModules === null ? null : new Set(enabledModules);
+  const isVisible = (item: Item) =>
+    !item.moduleKey || allowed === null || allowed.has(item.moduleKey);
+
+  // Drop disabled entries, then drop any section left with nothing in it so
+  // no orphan heading is rendered.
+  const sections = SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter(isVisible),
+  })).filter((section) => section.items.length > 0);
 
   const nav = (
     <>
@@ -153,7 +187,7 @@ export function OrgSidebar({
       </div>
 
       <nav className="scroll-thin flex-1 space-y-5 overflow-y-auto pb-4">
-        {SECTIONS.map((section, i) => (
+        {sections.map((section, i) => (
           <div key={section.heading ?? `s${i}`}>
             {section.heading && (
               <div className="t-label mb-1.5 px-3 text-muted/70">
